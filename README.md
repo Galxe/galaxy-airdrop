@@ -2,6 +2,10 @@
 
 Airdrop detail: https://blog.galaxy.eco/gal-early-adopters-rewards-9718455d936c
 
+Token detail: https://docs.galaxy.eco/the-GAL-token/GAL%20Token/
+
+ERC20 Token Address: **0x5fAa989Af96Af85384b8a938c2EdE4A7378D9875**
+
 ## Snapshot:
 
 The following snapshot of NFT holders was taken on 2022/04/28 08:00:00 UTC
