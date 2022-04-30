@@ -4,6 +4,8 @@ Airdrop detail: https://blog.galaxy.eco/gal-early-adopters-rewards-9718455d936c
 
 Token detail: https://docs.galaxy.eco/the-GAL-token/GAL%20Token/
 
+The Space Expedition Campaign detail: https://blog.galaxy.eco/project-galaxy-introduces-the-space-expedition-campaign-eb17543ff3f
+
 ERC20 Token Address: **0x5fAa989Af96Af85384b8a938c2EdE4A7378D9875**
 
 ## Snapshot:
@@ -35,11 +37,27 @@ Solana block: [131649382](https://solscan.io/block/131649382)
 | -------- | -------------------------------------------------------- | ------ | -------------------------------------------- | --- |
 | Dr.SOL   | [Dr. SOL](https://galaxy.eco/solana/campaign/GCe4SUUhRz) | Solana | GET9q6zVanFUi9qvgMN7KWrucVg56RRZt2Upe3pMbWwq | 30  |
 
+
+### Space Expedition - Pisces NFT:
+
+The snapshot of NFT holders was taken on 2022/04/30 10:00:00 UTC
+
+A total of 25,102 Pisces were minted. `200,000 / 25,102 ~= 7.97`. Each Pisces can get 7.97 GAL
+
+Polygon block: [27751310](https://polygonscan.com/block/27751310)
+
+| NFT Name | Campaign                                                 | Chain  | Creator Address                              | GAL |
+| -------- | -------------------------------------------------------- | ------ | -------------------------------------------- | --- |
+| Space Expedition - Pisces  | [Space Expedition - Pisces](https://galaxy.eco/galaxy/campaign/GCDtiUUxFw) | Polygon | 0x50EbbEB9FE6A4F206f2C44f1E36748400b0B774A | 7.97  |
+
+
 ### Query:
 
 Shadowy coder: [https://dune.com/queries/639637](https://dune.com/queries/639637)
 
 Cowboy and Girl: [https://dune.com/queries/639306](https://dune.com/queries/639306)
+
+Space Expedition - Pisces: [https://dune.com/queries/639387](https://dune.com/queries/639387)
 
 > A special query is needed for Solana to properly handle custodial wallets in NFT exchanges
 
@@ -53,3 +71,4 @@ Dr.SOL: [https://github.com/NFTGalaxy/snapshot-sol-cool-2022/tree/snapshot/src](
 3. [Meta Cowboy series](snapshot/meta-cowboy.csv)
 4. [Boost](snapshot/boost.csv)
 5. [Dr.SOL](snapshot/dr-sol.csv)
+6. [Space Expedition - Pisces](snapshot/pisces.csv)
