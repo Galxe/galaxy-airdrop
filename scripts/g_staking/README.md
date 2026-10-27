@@ -88,6 +88,8 @@ differenceInternalUnits
 | `CONTRACT` | 其他合约，包括未完成验证的 Safe-like 合约 |
 | `SPECIAL` | 已列出的 EVM/Nitro 预编译或保留地址范围；不据此断言该地址在 B 已激活 |
 
+只有代码哈希匹配已识别 Safe proxy 的地址才会调用 Safe 方法；其他合约直接保留为 `CONTRACT`，避免未知 selector 引发的执行错误中断全量采集。Safe 读取时的 RPC 传输或历史状态故障仍会报错，不会被忽略。
+
 Safe 导出 owners、threshold、version 等，并保存原始读取证据。1/N Safe 不标记为需要多个签名。该识别不审计 Safe 模块、完整权限或跨链控制权。`stakers.contract.csv` 同时包含 `SAFE` 和 `CONTRACT`，另用 `address_type` 区分。
 
 源地址保存在 `source_address`。脚本不推断 Ethereum recipient，不生成 Claim Center 的分配、Merkle tree 或发放交易。
@@ -153,6 +155,6 @@ output/gravity/<block>/
 npm test
 ```
 
-测试覆盖换算与取整、解锁边界、已退出用户、四类事件、事务回滚／恢复、重复日志、RPC 乱序与单项失败、首次连接及后续切换的备用链错误、区块变化、传输超时缩小日志区间、单块日志超限 receipts 回退、Safe 真伪识别、大整数、CSV 公式保护、WAL checkpoint 受阻后恢复、可重复导出，以及端到端中断恢复。端到端测试会在 `127.0.0.1` 启动模拟 RPC。
+测试覆盖换算与取整、解锁边界、已退出用户、四类事件、事务回滚／恢复、重复日志、RPC 乱序与单项失败、首次连接及后续切换的备用链错误、区块变化、传输超时缩小日志区间、单块日志超限 receipts 回退、Safe 真伪识别、普通合约跳过 Safe 探测、Safe 读取故障传播、大整数、CSV 公式保护、WAL checkpoint 受阻后恢复、可重复导出，以及包含已清仓合约用户的端到端中断恢复。端到端测试会在 `127.0.0.1` 启动模拟 RPC。
 
 2026-10-27 在区块 `130827456` 做过链上样本测试：扫描 `130000000..130827456`，发现 2,037 个用户、2,756 个事件，仅查询 3 个用户，其中 2 个仍有权益；正确输出 `partial`（退出码 2）。这不是全量快照，也未完成全量托管对账。

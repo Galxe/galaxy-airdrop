@@ -49,6 +49,9 @@ export async function classify(rpc, address, code, block, registry) {
     return { type: 'EOA_DELEGATED', evidence: 'eip7702_delegation', delegation: `0x${code.slice(8)}` };
   }
   const other = { type: 'CONTRACT', evidence: 'code_present_safe_not_verified' };
+  // Unknown contracts may fail with invalid opcode/out of gas for Safe selectors.
+  // Only recognized proxy bytecode is eligible for Safe verification.
+  if (!registry.proxyHashes.has(keccak256(code))) return other;
   const masterCopy = await contractCall(rpc, address, SAFE, 'masterCopy', [], block, true);
   if (!masterCopy || masterCopy === ZeroAddress) return other;
   const owners = await contractCall(rpc, address, SAFE, 'getOwners', [], block, true);
@@ -59,7 +62,7 @@ export async function classify(rpc, address, code, block, registry) {
   const knownVersion = registry.implementationHashes.get(keccak256(implementationCode));
   const slot0 = await rpc.call('eth_getStorageAt', [address, '0x0', hex(block)]);
   const validOwners = owners.every(owner => owner !== ZeroAddress && BigInt(owner) !== 1n) && new Set(owners.map(lower)).size === owners.length;
-  const verified = registry.proxyHashes.has(keccak256(code)) && knownVersion && version === knownVersion &&
+  const verified = knownVersion && version === knownVersion &&
     /^0x[0-9a-f]{64}$/i.test(slot0) && lower(`0x${slot0.slice(-40)}`) === lower(masterCopy) && validOwners;
   return {
     type: verified ? 'SAFE' : 'CONTRACT',

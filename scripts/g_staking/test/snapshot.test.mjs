@@ -211,6 +211,29 @@ test('EOA, delegated EOA and reserved addresses are distinguished', async () => 
   assert.equal((await classify(rpc, '0x0000000000000000000000000000000000000064', '0x', 42, emptyRegistry)).type, 'SPECIAL');
 });
 
+test('ordinary contracts are classified without probing unsupported Safe methods', async () => {
+  const registry = { proxyHashes: new Set([keccak256('0x6001')]), implementationHashes: new Map() };
+  for (const message of ['invalid opcode', 'out of gas']) {
+    let probes = 0;
+    const rpc = { call: async () => { probes++; throw new RpcError({ code: -32000, message }); } };
+    const result = await classify(rpc, A, '0x6003', 42, registry);
+    assert.equal(result.type, 'CONTRACT');
+    assert.equal(result.safe, undefined);
+    assert.equal(probes, 0, 'unknown bytecode must not receive Safe calls');
+  }
+});
+
+test('recognized Safe probes still propagate transport and historical-state failures', async () => {
+  const proxyCode = '0x6001';
+  const registry = { proxyHashes: new Set([keccak256(proxyCode)]), implementationHashes: new Map() };
+  for (const error of [new Error('RPC transport failed or timed out'), new RpcError({ code: -32000, message: 'historical state unavailable' })]) {
+    let probes = 0;
+    const rpc = { call: async () => { probes++; throw error; } };
+    await assert.rejects(classify(rpc, A, proxyCode, 42, registry), failure => failure === error);
+    assert.equal(probes, 1);
+  }
+});
+
 test('Safe owners and threshold require recognized proxy AND implementation bytecode', async () => {
   const proxyCode = '0x6001', implementationCode = '0x6002';
   const registry = { proxyHashes: new Set([keccak256(proxyCode)]), implementationHashes: new Map([[keccak256(implementationCode), '1.4.1']]) };
@@ -266,16 +289,20 @@ test('CLI integrates full history, raw batches, custody, deterministic resume an
   const runtime = readFileSync(new URL('./fixtures/staking-runtime.hex', import.meta.url), 'utf8').trim();
   assert.equal(keccak256(runtime), CONTRACT.runtimeCodeHash);
   const events = [log(), log('TokenStaked', B, 11, 1), log('TokenWithdraw', B, 12, 2)];
-  let logCalls = 0, failState = true;
+  let logCalls = 0, safeProbeCalls = 0, failState = true;
   const handler = request => {
     const { method, params, id } = request;
     let result;
     if (method === 'eth_chainId') result = '0x659';
     else if (method === 'eth_getBlockByNumber') result = { number: '0x2a', hash: HASH, stateRoot: HASH, timestamp: '0x3e8', transactions: [] };
-    else if (method === 'eth_getCode') result = params[0] === CONTRACT.address ? runtime : '0x';
+    else if (method === 'eth_getCode') result = params[0] === CONTRACT.address ? runtime : params[0].toLowerCase() === B ? '0x6003' : '0x';
     else if (method === 'eth_getBalance') result = '0x96';
     else if (method === 'eth_getLogs') { logCalls++; result = events; }
     else if (method === 'eth_call') {
+      if (params[0].to.toLowerCase() === B) {
+        safeProbeCalls++;
+        return { jsonrpc: '2.0', id, error: { code: -32000, message: 'invalid opcode' } };
+      }
       const call = ABI.parseTransaction({ data: params[0].data });
       if (failState && call.name === 'getStakeAmount') return { id, error: { code: -32000, message: 'archive read failed' } };
       const active = call.args.length > 0 && typeof call.args[0] === 'string' && call.args[0].toLowerCase() === A;
@@ -311,9 +338,12 @@ test('CLI integrates full history, raw batches, custody, deterministic resume an
   assert.equal(report.status, 'reconciled'); assert.equal(report.summary.historicalUsers, 2); assert.equal(report.summary.activeUsers, 1);
   assert.equal(report.summary.pendingWei, '20'); assert.equal(report.summary.unlockedWei, '30');
   assert.equal(report.reconciliation.differenceInternalUnits, '0');
+  const rows = readFileSync(join(dir, 'exports/stakers.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(row => [row.address, row.type, row.hasPosition]), [[A, 'EOA', true], [B, 'CONTRACT', false]]);
   const csvBefore = readFileSync(join(dir, 'exports/stakers.csv'), 'utf8');
   const again = await run(); assert.equal(again.code, 0, again.stderr); assert.equal(logCalls, 1);
   assert.equal(readFileSync(join(dir, 'exports/stakers.csv'), 'utf8'), csvBefore);
+  assert.equal(safeProbeCalls, 0, 'the exited contract must not block collection or resume with invalid opcode');
   const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
   assert.equal(manifest.ethereumRecipientsAssigned, false); assert(manifest.files['snapshot.sqlite']);
   const wrongIdentity = await run(['--limit-users', '1']); assert.equal(wrongIdentity.code, 1); assert.match(wrongIdentity.stderr, /identity mismatch/);
