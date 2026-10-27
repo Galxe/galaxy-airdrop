@@ -1,0 +1,14 @@
+{
+  "name": "galaxy-airdrop-snapshots",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "snapshot:gravity": "node gravity-holders.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@safe-global/safe-deployments": "1.37.65",
+    "ethers": "6.17.0"
+  }
+}

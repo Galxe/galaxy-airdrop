@@ -1,0 +1,4 @@
+node_modules/
+.context/
+.env
+output/
