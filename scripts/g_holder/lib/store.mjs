@@ -69,7 +69,10 @@ export class Store {
   }
   close() {
     if (this.closed) return;
-    try { this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } finally { this.db.close(); this.closed = true; }
+    try {
+      const result = this.db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+      if (result.busy !== 0 || result.log !== result.checkpointed) throw new Error('SQLite WAL checkpoint blocked; close other database connections and rerun before archiving');
+    } finally { this.db.close(); this.closed = true; }
   }
 }
 

@@ -183,9 +183,9 @@ output/gravity/<block>/
     holders.jsonl
 ```
 
-所有正余额账户都在 `holders.all.csv` 中，各分类文件构成无重叠划分。CSV 按地址稳定排序，金额用最小单位十进制字符串；另有 18 位格式化 G 列。JSONL 保存逐行结构，避免巨型 JSON 数组。导出到表格软件时将整数列作为文本读取。
+所有正余额账户都在 `holders.all.csv` 中，各分类文件构成无重叠划分。CSV 按地址稳定排序，金额用最小单位十进制字符串；另有 18 位格式化 G 列。对可能被表格软件解释为公式的文本（例如合约返回的版本字符串），CSV 会添加单引号前缀；JSONL 和 SQLite 保留原始值。JSONL 保存逐行结构，避免巨型 JSON 数组。导出到表格软件时将整数列作为文本读取。
 
-完成后停止数据修改并重新导出；先 checkpoint/关闭 SQLite，再生成文件 SHA-256。运行中不要仅复制 `.sqlite` 主文件而遗漏 WAL。失败运行可留下工作库、错误记录或 `.tmp`，但 stateRoot 或正余额地址验证未通过时不会输出 holder CSV 或完成 manifest。
+完成后停止数据修改并重新导出；确认 WAL checkpoint 成功并关闭 SQLite 后，再生成文件 SHA-256。若其他数据库连接阻止 checkpoint，本次运行失败，关闭这些连接后重跑即可恢复归档。运行中不要仅复制 `.sqlite` 主文件而遗漏 WAL。失败运行可留下工作库、错误记录或 `.tmp`，但 stateRoot 或正余额地址验证未通过时不会输出 holder CSV 或完成 manifest。
 
 建议本地 SSD，并为全账户、原始压缩响应和 trie 节点预留磁盘空间。该实现避免全量内存缓存，但尚未对 Gravity 数千万账户进行生产容量验证；不要从小型测试外推完整耗时和磁盘需求。
 
@@ -200,6 +200,6 @@ output/gravity/<block>/
 npm test
 ```
 
-测试覆盖 uint64/uint256 精度、独立编码的单叶 MPT 根、secure trie 对照、遗漏零余额账户、正余额原像缺失、重复页、Base64 cursor、事务中断与恢复、JSONL 字节偏移、代码 hash、RPC 切换时的链与区块身份、两种来源的完整 CLI、桥调整及归档校验和。端到端测试在 `127.0.0.1` 启动模拟 RPC。
+测试覆盖 uint64/uint256 精度、独立编码的单叶 MPT 根、secure trie 对照、遗漏零余额账户、正余额原像缺失、重复页、Base64 cursor、事务中断与恢复、JSONL 字节偏移、代码 hash、RPC 切换时的链与区块身份、CSV 公式保护、WAL checkpoint 受阻后恢复、两种来源的完整 CLI、桥调整及归档校验和。端到端测试在 `127.0.0.1` 启动模拟 RPC。
 
 另用 10,000 个合成账户（包含零余额）验证了磁盘 trie 重建与参考 root 一致。线上只做输入能力预检，**尚未运行真实链全量快照**。当前公开 RPC 的 `debug_accountRange` 返回 `authenticated API key required for method`，无法完成账户枚举；正式运行仍需可访问的完整状态 RPC 或 JSONL 来源。

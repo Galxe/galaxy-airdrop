@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, copyFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -114,6 +115,26 @@ test('duplicate accounts roll back source rows and cursor atomically', t => {
   assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM chunks').get().n, 0);
 });
 
+test('a reader blocking WAL checkpoint prevents sealing until the database can stand alone', t => {
+  const { store, dir, identity } = storeFor(t, HASH);
+  store.set('checkpointMarker', 'before');
+  store.db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+  const reader = new DatabaseSync(join(dir, 'snapshot.sqlite'));
+  try {
+    reader.exec('BEGIN');
+    reader.prepare('SELECT value FROM meta WHERE key=?').get('checkpointMarker');
+    store.set('checkpointMarker', 'after');
+    assert.throws(() => store.close(), /WAL checkpoint blocked/);
+    assert.equal(store.closed, true);
+  } finally { reader.close(); }
+  const resumed = new Store(dir, identity);
+  try { assert.equal(resumed.get('checkpointMarker'), 'after'); } finally { resumed.close(); }
+  copyFileSync(join(dir, 'snapshot.sqlite'), join(dir, 'archive.sqlite'));
+  const archive = new DatabaseSync(join(dir, 'archive.sqlite'));
+  try { assert.equal(JSON.parse(archive.prepare('SELECT value FROM meta WHERE key=?').get('checkpointMarker').value), 'after'); }
+  finally { archive.close(); }
+});
+
 test('interrupted trie batch rolls back nodes AND root checkpoint, then resumes', async t => {
   const rows = fixture(), root = await referenceRoot(rows), { store } = storeFor(t, root);
   putAll(store, rows);
@@ -222,6 +243,23 @@ test('bridge raw balance equality does not establish reconciliation; supplied le
   assert.equal(bridgeReconciliation('100', '111', alpha, ethereum, json(ledger)).residualWei, 1n);
   ledger.alpha = { ...alpha, block: 41 };
   assert.throws(() => bridgeReconciliation('100', '110', alpha, ethereum, json(ledger)), /identity mismatch/);
+});
+
+test('CSV neutralizes contract-supplied formulas while JSONL preserves original evidence', async t => {
+  const versions = ['=HYPERLINK("https://example.invalid")', '+1+1', '-1+1', '@SUM(1)', '\t=1+1', '\r=1+1', ' =1+1'];
+  const dir = directory(t);
+  const store = {
+    get: key => key === 'verifiedRoot' ? HASH : key === 'classificationsComplete',
+    *holders() { for (const version of versions) yield {
+      address: B, balanceWei: '1', nonce: '0', codeHash: keccak256(code), codeKind: 'CONTRACT',
+      classification: { type: 'CONTRACT', safe: { verified: false, version, threshold: 1, owners: [A] } },
+    }; },
+  };
+  await writeExports(store, dir, { status: 'state_verified', block: 42 });
+  const csv = readFileSync(join(dir, 'exports/holders.all.csv'), 'utf8');
+  for (const version of versions) assert(csv.includes(`"'${version.replaceAll('"', '""')}"`));
+  const rows = readFileSync(join(dir, 'exports/holders.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(row => row.safe.version), versions);
 });
 
 test('CLI: both full sources, resume, missing-zero rejection, Ethereum arithmetic and checksums', async t => {

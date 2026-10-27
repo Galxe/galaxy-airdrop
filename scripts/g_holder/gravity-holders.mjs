@@ -134,7 +134,7 @@ async function main() {
     process.exitCode = ['not_requested', 'adjusted_match'].includes(bridge.status) ? 0 : 2;
   } catch (error) {
     const message = error.message.replace(/https?:\/\/\S+/g, '[endpoint]');
-    store?.db.prepare('INSERT INTO errors(time,stage,message) VALUES(?,?,?)').run(new Date().toISOString(), stage, message);
+    if (store && !store.closed) store.db.prepare('INSERT INTO errors(time,stage,message) VALUES(?,?,?)').run(new Date().toISOString(), stage, message);
     writeFileSync(join(dir, 'last-error.json'), json({ stage, message, at: new Date().toISOString() }) + '\n');
     throw new Error(message);
   } finally {

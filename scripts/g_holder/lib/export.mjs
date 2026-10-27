@@ -7,7 +7,12 @@ import { formatUnits } from 'ethers';
 import { holderType } from './holders.mjs';
 import { json } from './data.mjs';
 
-const csv = values => values.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',') + '\n';
+// Quoting alone does not stop spreadsheet formulas in untrusted contract text.
+const csv = values => values.map(value => {
+  let text = String(value ?? '');
+  if (/^[\t\r\n]|^\s*[=+@-]/u.test(text)) text = "'" + text;
+  return `"${text.replaceAll('"', '""')}"`;
+}).join(',') + '\n';
 export async function writeExports(store, dir, report) {
   if (!store.get('verifiedRoot') || !store.get('classificationsComplete')) throw new Error('Verified full state and complete classification are required before exporting holders');
   const folder = join(dir, 'exports'); await mkdir(folder, { recursive: true });
