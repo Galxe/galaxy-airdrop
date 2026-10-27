@@ -4,6 +4,8 @@ Airdrop detail: https://blog.galaxy.eco/gal-early-adopters-rewards-9718455d936c
 
 Token detail: https://docs.galaxy.eco/the-GAL-token/GAL%20Token/
 
+Gravity Alpha G staking snapshot script: [scripts/g_staking](scripts/g_staking/README.md).
+
 The Space Expedition Campaign detail: https://blog.galaxy.eco/project-galaxy-introduces-the-space-expedition-campaign-eb17543ff3f
 
 ERC20 Token Address: **0x5fAa989Af96Af85384b8a938c2EdE4A7378D9875**
