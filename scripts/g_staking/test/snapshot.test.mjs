@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, copyFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +88,26 @@ test('run directory allows one live writer', t => {
   release(); acquireLock(dir)();
 });
 
+test('a reader blocking WAL checkpoint prevents sealing until the database can stand alone', t => {
+  const { store, dir } = openStore(t);
+  store.set('checkpointMarker', 'before');
+  store.db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+  const reader = new DatabaseSync(join(dir, 'snapshot.sqlite'));
+  try {
+    reader.exec('BEGIN');
+    reader.prepare('SELECT value FROM meta WHERE key=?').get('checkpointMarker');
+    store.set('checkpointMarker', 'after');
+    assert.throws(() => store.close(), /WAL checkpoint blocked/);
+    assert.equal(store.closed, true);
+  } finally { reader.close(); }
+  const resumed = new Store(dir, identity);
+  try { assert.equal(resumed.get('checkpointMarker'), 'after'); } finally { resumed.close(); }
+  copyFileSync(join(dir, 'snapshot.sqlite'), join(dir, 'archive.sqlite'));
+  const archive = new DatabaseSync(join(dir, 'archive.sqlite'));
+  try { assert.equal(JSON.parse(archive.prepare('SELECT value FROM meta WHERE key=?').get('checkpointMarker').value), 'after'); }
+  finally { archive.close(); }
+});
+
 test('RPC batch matches IDs despite response order and rejects malformed/failed members', async () => {
   let mode = 'reversed';
   const rpc = new Rpc(['https://example.invalid'], { delay: 0, retries: 0, fetcher: async (_, init) => {
@@ -112,6 +133,38 @@ test('failover is rejected before state reads if the chain/block does not match'
   rpc.identity = { block: 42, blockHash: HASH };
   await assert.rejects(rpc.call('eth_getBalance', [A, '0x2a']), /identity mismatch/);
   assert(!received.includes('eth_getBalance'));
+});
+
+test('initial pinning verifies the chain on the endpoint that supplied the block', async () => {
+  let fallbackChain = '0x1';
+  const rpc = new Rpc(['https://primary.invalid', 'https://fallback.invalid'], { delay: 0, retries: 0, fetcher: async (url, init) => {
+    const request = JSON.parse(init.body), fallback = url.includes('fallback');
+    if (!fallback && request.method === 'eth_getBlockByNumber') throw new Error('timeout');
+    const result = request.method === 'eth_chainId' ? (fallback ? fallbackChain : '0x659') : { number: '0x2a', hash: HASH };
+    return response({ id: request.id, result });
+  } });
+  await assert.rejects(rpc.pin(42), /chain ID 1625/);
+  assert.equal(rpc.identity, undefined);
+  rpc.active = 0; fallbackChain = '0x659';
+  assert.equal((await rpc.pin(42)).hash, HASH);
+});
+
+test('transport timeouts shrink log ranges and complete the scan', async t => {
+  const { store } = openStore(t, { block: 2 }), ranges = [];
+  const rpc = new Rpc(['https://example.invalid'], { delay: 0, retries: 0, fetcher: async (_, init) => {
+    const request = JSON.parse(init.body);
+    if (request.method === 'eth_getBlockByNumber') return response({ id: request.id, result: { hash: HASH } });
+    assert.equal(request.method, 'eth_getLogs');
+    const range = request.params[0]; ranges.push([range.fromBlock, range.toBlock]);
+    if (range.fromBlock !== range.toBlock) throw new Error('provider timeout');
+    return response({ id: request.id, result: range.fromBlock === '0x1' ? [log('TokenStaked', A, 1)] : [] });
+  } });
+  rpc.identity = { block: 2, blockHash: HASH };
+  await collectLogs(rpc, store, { block: 2, chunkSize: 3, logLimit: 10000 });
+  assert.deepEqual(ranges[0], ['0x0', '0x2']);
+  assert(ranges.some(([from, to]) => from === '0x1' && to === '0x1'));
+  assert.equal(store.get('nextBlock'), 3);
+  assert.equal(store.count('users'), 1);
 });
 
 test('a changed canonical block stops a run', async () => {
@@ -195,6 +248,17 @@ test('exports are reproducible, retain zero-position users and exact decimal str
   assert.equal(readFileSync(join(dir, 'exports/stakers.active.csv'), 'utf8').trim().split('\n').length, 1);
   await writeExports(store, dir, report);
   assert.equal(readFileSync(join(dir, 'exports/stakers.csv'), 'utf8'), original);
+});
+
+test('CSV neutralizes contract-supplied formulas while JSONL preserves original evidence', async t => {
+  const versions = ['=HYPERLINK("https://example.invalid")', '+1+1', '-1+1', '@SUM(1)', '\t=1+1', '\r=1+1', ' =1+1'];
+  const dir = directory(t);
+  const store = { *rows() { for (const version of versions) yield { ...position(), type: 'CONTRACT', safe: { verified: false, version, threshold: 1, owners: [A] } }; } };
+  await writeExports(store, dir, { status: 'reconciled', block: 42, config });
+  const csv = readFileSync(join(dir, 'exports/stakers.csv'), 'utf8');
+  for (const version of versions) assert(csv.includes(`"'${version.replaceAll('"', '""')}"`));
+  const rows = readFileSync(join(dir, 'exports/stakers.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(row => row.safe.version), versions);
 });
 
 test('CLI integrates full history, raw batches, custody, deterministic resume and failure recovery', async t => {

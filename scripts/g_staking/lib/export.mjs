@@ -6,7 +6,12 @@ import { createHash } from 'node:crypto';
 import { formatUnits } from 'ethers';
 import { json } from './store.mjs';
 
-const csv = values => values.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',') + '\n';
+// Quoting alone does not stop spreadsheet formulas in untrusted contract text.
+const csv = values => values.map(value => {
+  let text = String(value ?? '');
+  if (/^[\t\r\n]|^\s*[=+@-]/u.test(text)) text = "'" + text;
+  return `"${text.replaceAll('"', '""')}"`;
+}).join(',') + '\n';
 const columns = ['snapshot_status', 'source_chain_id', 'block', 'source_address', 'address_type', 'has_position', 'staked_wei', 'pending_wei', 'unlocked_wei', 'total_position_wei', 'total_position_g', 'internal_units', 'multiplier', 'paused', 'has_matured_batch', 'code_hash', 'safe_verified', 'safe_version', 'safe_threshold', 'safe_owners', 'delegation'];
 const rowValues = (row, report) => [report.status, 1625, report.block, row.address, row.type, row.hasPosition, row.stakedWei, row.pendingWei, row.unlockedWei, row.totalPositionWei, formatUnits(row.totalPositionWei, 18), row.internalUnits, report.config.multiplier, row.paused, row.hasMaturedBatch, row.codeHash, row.safe?.verified, row.safe?.version, row.safe?.threshold, row.safe?.owners.join(';'), row.delegation];
 

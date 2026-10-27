@@ -46,6 +46,7 @@ export class Rpc {
     }
   }
   async request(payload) {
+    let lastError;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       for (let offset = 0; offset < this.urls.length; offset++) {
         const index = (this.active + offset) % this.urls.length;
@@ -54,6 +55,7 @@ export class Rpc {
           try { await this.validateEndpoint(index); }
           catch (error) {
             if (/identity mismatch/.test(error.message)) throw error;
+            lastError = error;
             continue;
           }
         }
@@ -61,11 +63,11 @@ export class Rpc {
           const result = await this.post(index, payload);
           this.active = index;
           return result;
-        } catch { /* Bounded retry; URLs and credentials are deliberately not logged. */ }
+        } catch (error) { lastError = error; /* post() emits credential-free transport messages. */ }
       }
       if (attempt < this.retries) await sleep(250 * 2 ** attempt);
     }
-    throw new Error('RPC transport unavailable on all configured endpoints');
+    throw new Error(`RPC unavailable on all configured endpoints: ${lastError?.message ?? 'transport failure'}`);
   }
   async call(method, params) {
     const request = this.payload(method, params);
@@ -99,8 +101,15 @@ export class Rpc {
   }
   async pin(block) {
     if (BigInt(await this.call('eth_chainId', [])) !== 1625n) throw new Error('Expected Gravity Alpha chain ID 1625');
+    const chainEndpoint = this.active;
     const header = await this.call('eth_getBlockByNumber', [hex(block), false]);
     if (!header || BigInt(header.number) !== BigInt(block) || !/^0x[0-9a-f]{64}$/i.test(header.hash)) throw new Error('Target block unavailable');
+    // The header can fail over before a snapshot identity has been established.
+    if (this.active !== chainEndpoint) {
+      const request = this.payload('eth_chainId', []);
+      const chain = this.decode(await this.post(this.active, request), request);
+      if (BigInt(chain) !== 1625n) throw new Error('Expected Gravity Alpha chain ID 1625 on snapshot endpoint');
+    }
     this.identity = { block, blockHash: header.hash };
     return header;
   }

@@ -111,7 +111,7 @@ async function main() {
     process.exitCode = report.status === 'reconciled' ? 0 : 2;
   } catch (error) {
     const message = error.message.replace(/https?:\/\/\S+/g, '[endpoint]');
-    store?.recordError(stage, message);
+    if (store && !store.closed) store.recordError(stage, message);
     writeFileSync(join(dir, 'last-error.json'), json({ stage, message, at: new Date().toISOString() }) + '\n');
     throw new Error(message);
   } finally {
