@@ -1,0 +1,14 @@
+{
+  "name": "gravity-alpha-native-g-holder-snapshot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": { "snapshot:holders": "node gravity-holders.mjs", "test": "node --test" },
+  "dependencies": {
+    "@ethereumjs/trie": "6.2.1",
+    "@safe-global/safe-deployments": "1.37.65",
+    "ethers": "6.17.0",
+    "json-bigint": "1.0.0"
+  }
+}
